@@ -6,7 +6,9 @@
 #include "nrf.h"
 
 #include "app_timer.h"
+#if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
 #include "app_usbd.h"
+#endif
 #include "app_util_platform.h"
 #include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
@@ -189,6 +191,7 @@ static void system_off_enter(void) {
     // Then disable the LF LPCOMP event
     NRF_LPCOMP->INTENCLR = LPCOMP_INTENCLR_CROSS_Msk | LPCOMP_INTENCLR_UP_Msk | LPCOMP_INTENCLR_DOWN_Msk | LPCOMP_INTENCLR_READY_Msk;
 
+#if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
     // Save tag data
     tag_emulation_save();
 
@@ -200,8 +203,13 @@ static void system_off_enter(void) {
                               // POWER_RAM_POWER_S3RETENTION_On << POWER_RAM_POWER_S3RETENTION_Pos |
                               // POWER_RAM_POWER_S4RETENTION_On << POWER_RAM_POWER_S4RETENTION_Pos |
         POWER_RAM_POWER_S5RETENTION_On << POWER_RAM_POWER_S5RETENTION_Pos;
+
+
     ret = sd_power_ram_power_set(8, ram8_retention);
     APP_ERROR_CHECK(ret);
+
+#endif // defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
+
 
     if (g_is_low_battery_shutdown) {
         // Don't create too complex animations, just blink LED1 three times.
@@ -381,22 +389,26 @@ static void check_wakeup_src(void) {
 
         // We can only run tag emulation at field wakeup source.
         sleep_timer_start(SLEEP_DELAY_MS_FIELD_WAKEUP);
-    } else if (m_reset_source & NRF_POWER_RESETREAS_VBUS_MASK) {
+//    } else if (m_reset_source & NRF_POWER_RESETREAS_VBUS_MASK) {
         // nrfx_power_usbstatus_get() can check usb attach status
-        NRF_LOG_INFO("WakeUp from VBUS(USB)");
+//        NRF_LOG_INFO("WakeUp from VBUS(USB)");
         
         // USB plugged in and open communication break has its own light effect, no need to light up for the time being
         // set_slot_light_color(color);
         // light_up_by_slot();
 
         // Start Bluetooth radio with USB plugged in, no deep hibernation required
-        advertising_start();
+//        advertising_start();
     } else {
         NRF_LOG_INFO("First power system");
 
         // Reset the noinit ram area
         uint32_t *noinit_addr = (uint32_t *)0x20038000;
         memset(noinit_addr, 0xFF, 0x8000);
+#elif defined(NRF52832_XXAA)
+        uint32_t *noinit_addr = (uint32_t *)0x2000E000;
+        memset(noinit_addr, 0xFF, 0x2000);
+#endif
         NRF_LOG_INFO("Reset noinit ram done.");
 
         // Initialize the default card slot data.
@@ -412,13 +424,13 @@ static void check_wakeup_src(void) {
         light_up_by_slot();
 
         // If the USB is plugged in when first powered up, we can do something accordingly
-        if (nrfx_power_usbstatus_get() != NRFX_POWER_USB_STATE_DISCONNECTED) {
-            NRF_LOG_INFO("USB Power found.");
+        //if (nrfx_power_usbstatus_get() != NRFX_POWER_USB_STATE_DISCONNECTED) {
+        //    NRF_LOG_INFO("USB Power found.");
             // usb plugged in can broadcast BLE at will
             advertising_start();
-        } else {
+        //} else {
             sleep_timer_start(SLEEP_DELAY_MS_FRIST_POWER); // Wait a while and go straight to hibernation, do nothing
-        }
+        //}
     }
 }
 
@@ -464,36 +476,36 @@ static void button_press_process(void) {
 
 extern bool g_usb_port_opened;
 static void blink_usb_led_status(void) {
-    uint8_t slot = tag_emulation_get_slot();
-    uint8_t color = get_color_by_slot(slot);
-    uint8_t dir = slot > 3 ? 1 : 0;
-    static bool is_working = false;
-    if (nrfx_power_usbstatus_get() == NRFX_POWER_USB_STATE_DISCONNECTED) {
-        if (is_working) {
-            rgb_marquee_stop();
-            set_slot_light_color(color);
-            light_up_by_slot();
-            is_working = false;
-        }
-    } else {
-
-        // The light effect is enabled and can be displayed
-        if (is_rgb_marquee_enable()) {
-            is_working = true;
-            if (g_usb_port_opened) {
-                ledblink1(color, dir);
-            } else {
-                ledblink6();
-            }
-        } else {
-            if (is_working) {
-                is_working = false;
-                rgb_marquee_stop();
-                set_slot_light_color(color);
-                light_up_by_slot();
-            }
-        }
-    }
+//    uint8_t slot = tag_emulation_get_slot();
+//    uint8_t color = get_color_by_slot(slot);
+//    uint8_t dir = slot > 3 ? 1 : 0;
+//    static bool is_working = false;
+//    if (nrfx_power_usbstatus_get() == NRFX_POWER_USB_STATE_DISCONNECTED) {
+//        if (is_working) {
+//            rgb_marquee_stop();
+//            set_slot_light_color(color);
+//            light_up_by_slot();
+//            is_working = false;
+//        }
+//    } else {
+//
+//        // The light effect is enabled and can be displayed
+//        if (is_rgb_marquee_enable()) {
+//            is_working = true;
+//            if (g_usb_port_opened) {
+//                ledblink1(color, dir);
+//            } else {
+//                ledblink6();
+//            }
+//        } else {
+//            if (is_working) {
+//                is_working = false;
+//                rgb_marquee_stop();
+//                set_slot_light_color(color);
+//                light_up_by_slot();
+//            }
+//        }
+//    }
 }
 
 /**@brief Application main function.
@@ -512,7 +524,9 @@ int main(void) {
     sleep_timer_init();       // Soft timer initialization for hibernation
     rng_drv_and_srand_init(); // Random number generator initialization
     power_management_init();  // Power management initialization
+    #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
     usb_cdc_init();           // USB cdc emulation initialization
+    #endif
     ble_slave_init();         // Bluetooth protocol stack initialization
     tag_emulation_init();     // Analog card initialization
     rgb_marquee_init();       // Light effect initialization
@@ -524,7 +538,9 @@ int main(void) {
     tag_mode_enter();         // Enter card simulation mode by default
 
     // usbd event listener
+#if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
     APP_ERROR_CHECK(app_usbd_power_events_enable());
+#endif
 
     // Enter main loop.
     NRF_LOG_INFO("Chameleon working");
@@ -538,7 +554,9 @@ int main(void) {
         // Log print process
         while (NRF_LOG_PROCESS());
         // USB event process
+        #if defined(NRF52833_XXAA) || defined(NRF52840_XXAA)
         while (app_usbd_event_queue_process());
+        #endif
         // No task to process, system sleep enter.
         // If system idle sometime, we can enter deep sleep state.
         // Some task process done, we can enter cpu sleep state.
